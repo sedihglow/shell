@@ -21,6 +21,7 @@ shell.o:				shell.c ./utility_sys.h
 .PHONY: check
 check:					# check for memory leak
 						$(info -- Checking For Memory Leaks --)
+						make
 						valgrind --leak-check=full ./shell.out
 
 .PHONY: debug
@@ -32,8 +33,8 @@ debug:					# GNU debugger
 clean:					# clean the directory
 						$(info -- Cleaning The Directory --)
 						rm -rf *.o shell.out
-
 .PHONY: all
 all:					# run the program as follows
 						$(info -- Running Program --)
+						make
 						./shell.out

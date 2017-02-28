@@ -20,6 +20,17 @@
 #define SET_BACKGROUND 1 // sets the cmd to run in background
 #define NO_BACKGROUND  0 // sets the cmd to not run in background (default)
 
+#define CMDINFO_ARGS 5
+
+#define NL_CHECK(nextWord, wordLen, endOfInput){                               \
+        wordLen = strlen(nextWord);                                            \
+        if((nextWord)[wordLen-1] == '\n'){                                       \
+            endOfInput = NL_FOUND;                                             \
+            (nextWord)[wordLen-1] = '\0';                                        \
+            --wordLen;                                                         \
+        }                                                                      \
+}
+
 typedef struct comLineInput{
     char *cmdInput;
     bool runBackground;
@@ -64,6 +75,8 @@ static void free_cmdHist_s(cmdHist_s **toFree)
 {
     int32_t i;
 
+    if(*toFree == NULL) return;
+
     for(i = 0; i < (*toFree) -> oldest; ++i){
         free((*toFree) -> history[i] -> cmdInput);
         (*toFree) -> history[i] -> cmdInput = NULL;
@@ -71,10 +84,57 @@ static void free_cmdHist_s(cmdHist_s **toFree)
         (*toFree) -> history[i] = NULL;
     }
     
-    free((*toFree) -> history);
+    if((*toFree) -> history != NULL){
+        free((*toFree) -> history);
+        (*toFree) -> history = NULL;
+    }
     free(*toFree);
     *toFree = NULL;
 }// end free_cmdHist_s
+
+static cmdInfo_s* init_cmdInfo_s(){
+    cmdInfo_s *newInfo = (cmdInfo_s*)malloc(sizeof(cmdInfo_s));
+    if(newInfo == NULL) errExit("malloc failure, toExecute");
+
+    newInfo -> cmdName = NULL;
+    newInfo -> args    = NULL;
+    newInfo -> input   = NULL;
+    newInfo -> output  = NULL;
+    newInfo -> runBackground = 0;
+    return newInfo;
+}
+
+static void free_cmdInfo_s(cmdInfo_s **toFree)
+{
+    int32_t i;
+
+    if(*toFree == NULL) return;
+
+    if((*toFree) -> cmdName != NULL){
+        free((*toFree) -> cmdName);
+        (*toFree) -> cmdName = NULL;
+    }
+    if((*toFree) -> input   != NULL){
+        free((*toFree) -> input);
+        (*toFree) -> input = NULL;
+    }
+    if((*toFree) -> output  != NULL){
+        free((*toFree) -> output);
+        (*toFree) -> output = NULL;
+    }
+    if((*toFree) -> args    != NULL){ 
+        for(i=0; (*toFree) -> args[i] != NULL; ++i){
+            free((*toFree) -> args[i]);
+            (*toFree) -> args[i] = NULL;
+        }
+    }
+
+    free((*toFree) -> args);
+    (*toFree) -> args = NULL;
+
+    free(*toFree);
+    *toFree = NULL;
+}// end free_cmdInfo_s
 
 /* Parses through the buffer, keeps track on where it is in the buffer. any new
  * buffer requires mode to be set to NEW_BUFF so the buffer placement is not 
@@ -102,7 +162,7 @@ static char* parseInput(char *inBuff, int32_t mode)
     len = strlen(parseStr);
 
     if(inBuff[bfPl] == '\n') parseStr[len] = '\n'; // keep the \n for ref
-    ++bfPl; // skip over the ' ' or '\n' for next parse
+    else ++bfPl; // skip over the ' ' or '\n' for next parse
 
     len += 2; // place room for '\n' and '\0'
 
@@ -118,7 +178,7 @@ static char* parseInput(char *inBuff, int32_t mode)
 }// end parseInput
 
 // does not account for things ilke !n | !n etc.
-static cmdInfo_s* processCMD(char *nextWord, bool *exitFlag, size_t len)
+static cmdInfo_s* getCMD(char *nextWord, bool *exitFlag, size_t len)
 {
     cmdInfo_s *toExecute = NULL;
 
@@ -129,17 +189,16 @@ static cmdInfo_s* processCMD(char *nextWord, bool *exitFlag, size_t len)
     }
     
     // any trailing & and '\n' are removed. Set up cmd and place in history
-    toExecute = (cmdInfo_s*)malloc(sizeof(cmdInfo_s));
-    if(toExecute == NULL) errExit("malloc failure, toExecute");
+    toExecute = init_cmdInfo_s();
     
     len = strlen(nextWord) + 1;
     toExecute -> cmdName = (char*)malloc(sizeof(char)*len);
-    if(toExecute -> cmdName == NULL) errExit("malloc failure, cmdName");
+    if(toExecute -> cmdName == NULL) errExit("getCMD: malloc failure, cmdName");
 
     strcpy(toExecute -> cmdName, nextWord);
 
     return toExecute;
-}//end processCMD
+}//end getCMD 
 
 // sets inBuff to the previous command given in current input buffer history
 // value and settings
@@ -235,11 +294,12 @@ static void addHistory(char* inBuff, cmdHist_s *cmdHist){
         inBuff[len-1] = '\0';
         cmdHist -> history[i] -> runBackground = SET_BACKGROUND;
     }
+    else cmdHist -> history[i] -> runBackground = NO_BACKGROUND;
 }//end add history
 
 // parse through inBuff untill all arguments are aquired and returned to the
 // the caller
-static char** aquireArgs(char *nextWord, char *inBuff, bool *endOfInput){
+static char** aquireArgs(char *progName, char **nextWord, char *inBuff, bool *endOfInput){
     char **finalArgs = NULL;
     char **retArgs = NULL;
     int32_t argCount = 0;
@@ -247,30 +307,38 @@ static char** aquireArgs(char *nextWord, char *inBuff, bool *endOfInput){
     size_t len = 0; 
    
     finalArgs = (char**)malloc(sizeof(char*)*BUFF_SIZE);
+    if(finalArgs == NULL) errExit("aquireArgs, malloc failure finalArgs");
+  
+    // build argv for program to be called
+    len = strlen(progName) + 1;
+    finalArgs[i] = (char*)malloc(sizeof(char)*len);
+    if(finalArgs == NULL) errExit("aquireArgs, malloc failure finalArgs[0]");
+
+    strncpy(finalArgs[i], progName, len);
+    ++i;
 
     // for each argument for the command
     do{
-
-        len = strlen(nextWord);
-
-        if(nextWord[len-1] == '\n'){
-            *endOfInput = NL_FOUND;
-            nextWord[len-1] = '\0';
-        }
+        NL_CHECK(*nextWord, len, *endOfInput);
         
         ++len; // room for null
         finalArgs[i] = (char*)malloc(sizeof(char*)*len);
         if(finalArgs[i] == NULL) errExit("aquireArgs, finalArgs malloc fail");
 
-        strncpy(finalArgs[i], nextWord, len);
+        strncpy(finalArgs[i], *nextWord, len);
     
-        free(nextWord); // clean up for next parse
-        nextWord = parseInput(inBuff, OLD_BUFF);
-        if(NULL == nextWord) errExit("aquireArgs, nextWord malloc failure");
+        if(*nextWord != NULL){
+            free(*nextWord); // clean up for next parse
+            *nextWord = NULL;
+        }
+        *nextWord = parseInput(inBuff, OLD_BUFF);
+        if(NULL == *nextWord) errExit("aquireArgs, nextWord malloc failure");
 
-        ++i; // go to next index
-    }while(*endOfInput != NL_FOUND && *nextWord != '<' && *nextWord != '>'
-            && *nextWord != '|');
+        NL_CHECK(*nextWord, len, *endOfInput);
+
+       ++i; // go to next index
+    }while(*endOfInput != NL_FOUND && **nextWord != '<' && **nextWord != '>'
+            && **nextWord != '|');
     
     if(*endOfInput == NL_FOUND) argCount = ++i; // leaves room for null pointer
     else        argCount = i;   // if we pulled a reserved symbol, i has room
@@ -283,11 +351,50 @@ static char** aquireArgs(char *nextWord, char *inBuff, bool *endOfInput){
     retArgs[i] = NULL; // NULL stopper for args
     
     free(finalArgs); // clean up final args
+    finalArgs = NULL;
 
     return retArgs;
 }
 
+static void handleExec(cmdInfo_s *toExec)
+{
+    int32_t fd;
+    char **noArgs = (char*[]){toExec -> cmdName, NULL};
+   
+    if(toExec -> runBackground == NO_BACKGROUND){
+        if(toExec -> input != NULL){
+            fd = open(toExec -> input, O_WRONLY);
+            dup2(STDIN_FILENO, fd);
+        }
 
+        if(toExec -> output != NULL){
+            fd = open(toExec -> output, O_WRONLY | O_CREAT);
+            dup2(STDOUT_FILENO, fd);
+        }
+        
+        if(toExec -> args != NULL){
+            execvp(toExec -> cmdName, toExec -> args);
+            err_exit("command not found");
+        }
+        else{
+            execvp(toExec -> cmdName, noArgs);
+            err_exit("command not found");
+        }
+    }
+    else{ // run in background
+        switch(fork()){
+            case -1: err_exit("Failed to open process for program.");
+            case 0: // grandchild
+                // make it so no output goes to the screen
+                handleExec(toExec);
+            defailt: // child
+            wait(NULL);
+            // TODO: Send signal to this childs
+        }
+    }
+        return; // should not reach this point
+
+}// end handleExec
 
 /********************** HEADER FUNCTIONS *************************************/
 void exec_shell(void)
@@ -300,7 +407,7 @@ void exec_shell(void)
     size_t  wordLen = 0;
     bool exitFlag = 0;
     bool endOfInput = 0;             // 1 when '\n' is found
-//    pid_t pid = 0;
+    pid_t pid = 0;
     char clBuff[BUFF_SIZE];          // command line buffer
     
     // Initialize history. all history feilds are NULL untill allocated
@@ -318,6 +425,8 @@ void exec_shell(void)
         READ_INPUT(STDIN_FILENO, clBuff, BUFF_SIZE, retIO);
         
         if(clBuff[0] == '\n') continue; // no input, go back and wait
+
+        endOfInput = 0; // ensure eoi is reset each loop
         
         if(clBuff[0] != '!'){ // fill next history slot
             addHistory(clBuff, cmdHist);
@@ -331,17 +440,15 @@ void exec_shell(void)
         // parse the word in the command
         nextWord = parseInput(clBuff, NEW_BUFF);
         if(NULL == nextWord) errExit("parseInput, nextWord mall0c failure");
-       
-        wordLen = strlen(nextWord);
-        if(nextWord[wordLen-1] == '\n'){
-            endOfInput = NL_FOUND;
-            nextWord[wordLen-1] = '\0';
-            --wordLen;
-        }
+        
+        NL_CHECK(nextWord, wordLen, endOfInput);
 
-        toExecute = processCMD(nextWord, &exitFlag, wordLen);
+        toExecute = getCMD(nextWord, &exitFlag, wordLen);
         if(exitFlag == EXIT){
-            free(nextWord);
+            if(nextWord != NULL){
+                free(nextWord);
+                nextWord = NULL;
+            }
             free_cmdHist_s(&cmdHist);
             return; // exit the shell program
         }
@@ -350,41 +457,50 @@ void exec_shell(void)
 
         while(endOfInput != NL_FOUND){
             // check following character
-            free(nextWord); // clean up for next value
+            if(nextWord != NULL){
+                free(nextWord); // clean up for next value
+                nextWord = NULL;
+            }
             nextWord = parseInput(clBuff, OLD_BUFF);
             wordLen = strlen(nextWord);
 
-           
-            if(wordLen > 1){ // next values must be arguments
-                toExecute -> args = aquireArgs(nextWord, clBuff, &endOfInput);
+            // next values must be arguments
+            if(*nextWord != '>' && *nextWord != '<' && *nextWord != '|'){ 
+                toExecute -> args = aquireArgs(toExecute -> cmdName, &nextWord, 
+                                               clBuff, &endOfInput);
             }
             
-            wordLen = strlen(nextWord);
-            if(wordLen == 1){ // nextWord is likely a reserved symbol
-                switch(*nextWord){
-                    case '>': // change output to file given
+            switch(*nextWord){
+                case '>': // change output to file given
+                    if(nextWord != NULL){
                         free(nextWord);
-                        nextWord = parseInput(clBuff, OLD_BUFF);
-                        wordLen = strlen(nextWord) + 1;
-                        toExecute -> output = (char*)malloc(sizeof(char)*wordLen);
-                        if(toExecute -> output == NULL) 
-                            errExit("exec_shell, toExecute -> output malloc failure");
-                        
-                        strncpy(toExecute -> output, nextWord, wordLen);
-                        break;
-                    case '<':  // change input to file given
+                        nextWord = NULL;
+                    }
+                    nextWord = parseInput(clBuff, OLD_BUFF);
+                    NL_CHECK(nextWord, wordLen, endOfInput);
+                    ++wordLen;
+                    toExecute -> output = (char*)malloc(sizeof(char)*wordLen);
+                    if(toExecute -> output == NULL) 
+                        errExit("exec_shell, toExecute -> output malloc failure");
+                    
+                    strncpy(toExecute -> output, nextWord, wordLen);
+                    break;
+                case '<':  // change input to file given
+                    if(nextWord != NULL){
                         free(nextWord);
-                        nextWord = parseInput(clBuff, OLD_BUFF);
-                        wordLen = strlen(nextWord) + 1;
-                        toExecute -> input = (char*)malloc(sizeof(char)*wordLen);
-                        if(toExecute -> input == NULL) 
-                            errExit("exec_shell, toExecute -> output malloc failure");
-                        
-                        strncpy(toExecute -> output, nextWord, wordLen);
-                        break;
-                    case '|':  // set input of cmd2 from output cmd1. cmd1|cmd2
-                        break;
-                }
+                        nextWord = NULL;
+                    }
+                    nextWord = parseInput(clBuff, OLD_BUFF);
+                    NL_CHECK(nextWord, wordLen, endOfInput);
+                    ++wordLen;
+                    toExecute -> input = (char*)malloc(sizeof(char)*wordLen);
+                    if(toExecute -> input == NULL) 
+                        errExit("exec_shell, toExecute -> output malloc failure");
+                    
+                    strncpy(toExecute -> input, nextWord, wordLen);
+                    break;
+                case '|':  // set input of cmd2 from output cmd1. cmd1|cmd2
+                    break;
             }
 /* TO TEST
 $cmd1 arg1 arg2 < input
@@ -392,9 +508,24 @@ $cmd1 arg1 arg2 > output
 $cmd1 arg1 arg2 < input > output
 */
         } // end while(eoi != NL_FOUND)
-        FREE_ALL(nextWord, toExecute -> cmdName, toExecute -> output,
-                 toExecute -> input, toExecute);
 
+        switch(pid = fork()){
+            case -1: errExit("exec_shell: error forking a child"); break;
+
+            case 0: // child
+                handleExec(toExecute);
+            break;
+            default: // parent
+            wait(NULL);
+        }
+
+
+        if(nextWord != NULL){
+            free(nextWord);
+            nextWord = NULL;
+        }
+        
+        free_cmdInfo_s(&toExecute);
     /*
             read_command(command, parameters);
             if(fork() != 0)
@@ -402,7 +533,7 @@ $cmd1 arg1 arg2 < input > output
             else
                 execvp(command, parameters);  use any version of exec */
             
-        }//end while
+    }//end while
 #undef PROMPT_LEN
 }//end exec_shell
 /********** EOF ***********/
