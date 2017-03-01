@@ -8,6 +8,6 @@
 
 #include "utility_sys.h"
 
-void exec_shell(void);
+void exec_shell(char *envp[]);
 
 /********** EOF ***********/

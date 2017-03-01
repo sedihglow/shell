@@ -14,7 +14,7 @@ int main(int argc, char *argv[], char *envp[])
     if(argc != CMD_ONLY) errMsg("$cmd takes no commands, additional input is"
                                 "ignored. $cmd");
 
-    exec_shell(); // run the shell
+    exec_shell(envp); // run the shell
 
     exit(EXIT_SUCCESS);
 }// end main

@@ -5,6 +5,7 @@
  *
  *  written by: James Ross
  *****************************************************************************/
+
 #include "shell.h"
 
 #define BUFF_SIZE 256 // size of input buffer
@@ -361,43 +362,40 @@ static void handleExec(cmdInfo_s *toExec)
     int32_t fd;
     char **noArgs = (char*[]){toExec -> cmdName, NULL};
    
+    printf("%s", toExec -> cmdName);
     if(toExec -> runBackground == NO_BACKGROUND){
         if(toExec -> input != NULL){
-            fd = open(toExec -> input, O_WRONLY);
-            dup2(STDIN_FILENO, fd);
+           if((fd = open(toExec -> input, O_WRONLY)) == FAILURE)
+               err_exit("failed to open input src");
+        
+            if(dup2(fd, STDIN_FILENO) == -1) errMsg("dup2 failure");
+            if(close(fd) == FAILURE) err_exit("output fd close failure");
         }
 
         if(toExec -> output != NULL){
-            fd = open(toExec -> output, O_WRONLY | O_CREAT);
-            dup2(STDOUT_FILENO, fd);
+           if((fd = open(toExec -> output, O_WRONLY | O_CREAT, S_IRWXU)) == FAILURE)
+               err_exit("failed to open input src");
+
+            if(dup2(fd, STDOUT_FILENO) == -1) errMsg("dup2 failure");
+            if(close(fd) == FAILURE) err_exit("output fd close failure");
         }
         
         if(toExec -> args != NULL){
-            execvp(toExec -> cmdName, toExec -> args);
+            execv(toExec -> cmdName, toExec -> args);
             err_exit("command not found");
         }
         else{
-            execvp(toExec -> cmdName, noArgs);
+            execv(toExec -> cmdName, noArgs);
             err_exit("command not found");
         }
     }
     else{ // run in background
-        switch(fork()){
-            case -1: err_exit("Failed to open process for program.");
-            case 0: // grandchild
-                // make it so no output goes to the screen
-                handleExec(toExec);
-            defailt: // child
-            wait(NULL);
-            // TODO: Send signal to this childs
-        }
     }
-        return; // should not reach this point
-
+        _exit(EXIT_SUCCESS);
 }// end handleExec
 
 /********************** HEADER FUNCTIONS *************************************/
-void exec_shell(void)
+void exec_shell(char *envp[])
 {
 #define PROMPT_LEN 10
     cmdHist_s *cmdHist = NULL;
@@ -502,11 +500,6 @@ void exec_shell(void)
                 case '|':  // set input of cmd2 from output cmd1. cmd1|cmd2
                     break;
             }
-/* TO TEST
-$cmd1 arg1 arg2 < input
-$cmd1 arg1 arg2 > output
-$cmd1 arg1 arg2 < input > output
-*/
         } // end while(eoi != NL_FOUND)
 
         switch(pid = fork()){
@@ -516,9 +509,9 @@ $cmd1 arg1 arg2 < input > output
                 handleExec(toExecute);
             break;
             default: // parent
-            wait(NULL);
+            if(toExecute -> runBackground == NO_BACKGROUND)
+                wait(NULL);
         }
-
 
         if(nextWord != NULL){
             free(nextWord);
