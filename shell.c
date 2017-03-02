@@ -6,6 +6,8 @@
  *  written by: James Ross
  *****************************************************************************/
 
+#define _GNU_SOURCE
+
 #include "shell.h"
 
 #define BUFF_SIZE 256 // size of input buffer
@@ -48,6 +50,7 @@ typedef struct cmdInfo{
     char **args; // all characters in the command called with cmdName
     char *input;
     char *output;
+    bool pipeOut;
     bool runBackground;
 }cmdInfo_s;
 
@@ -101,6 +104,7 @@ static cmdInfo_s* init_cmdInfo_s(){
     newInfo -> args    = NULL;
     newInfo -> input   = NULL;
     newInfo -> output  = NULL;
+    newInfo -> pipeOut = false;
     newInfo -> runBackground = 0;
     return newInfo;
 }
@@ -158,12 +162,14 @@ static char* parseInput(char *inBuff, int32_t mode)
     READ_PARSE(STDIN_FILENO, inBuff, bfPl, BUFF_SIZE-2, retIO, parseStr,
                BUFF_SIZE, inBuff[bfPl] != ' ' && inBuff[bfPl] != '\n');
     
-  
     // build final string
     len = strlen(parseStr);
 
     if(inBuff[bfPl] == '\n') parseStr[len] = '\n'; // keep the \n for ref
-    else ++bfPl; // skip over the ' ' or '\n' for next parse
+    else{
+        while(inBuff[bfPl] == ' ')
+            ++bfPl; // skip over the ' ' for next parse
+    }
 
     len += 2; // place room for '\n' and '\0'
 
@@ -177,29 +183,6 @@ static char* parseInput(char *inBuff, int32_t mode)
 
     return retStr;
 }// end parseInput
-
-// does not account for things ilke !n | !n etc.
-static cmdInfo_s* getCMD(char *nextWord, bool *exitFlag, size_t len)
-{
-    cmdInfo_s *toExecute = NULL;
-
-    // check for exit command
-    if(strcmp(nextWord, "exit") == 0){
-        *exitFlag = EXIT;
-        return NULL;
-    }
-    
-    // any trailing & and '\n' are removed. Set up cmd and place in history
-    toExecute = init_cmdInfo_s();
-    
-    len = strlen(nextWord) + 1;
-    toExecute -> cmdName = (char*)malloc(sizeof(char)*len);
-    if(toExecute -> cmdName == NULL) errExit("getCMD: malloc failure, cmdName");
-
-    strcpy(toExecute -> cmdName, nextWord);
-
-    return toExecute;
-}//end getCMD 
 
 // sets inBuff to the previous command given in current input buffer history
 // value and settings
@@ -341,8 +324,7 @@ static char** aquireArgs(char *progName, char **nextWord, char *inBuff, bool *en
     }while(*endOfInput != NL_FOUND && **nextWord != '<' && **nextWord != '>'
             && **nextWord != '|');
     
-    if(*endOfInput == NL_FOUND) argCount = ++i; // leaves room for null pointer
-    else        argCount = i;   // if we pulled a reserved symbol, i has room
+    argCount = ++i; // leaves room for null pointer
 
     retArgs = (char**)malloc(sizeof(char*)*argCount);
     if(retArgs == NULL) errExit("AquireArgs, retArgs malloc failure");
@@ -356,19 +338,102 @@ static char** aquireArgs(char *progName, char **nextWord, char *inBuff, bool *en
 
     return retArgs;
 }
+// does not account for things ilke !n | !n etc.
+static cmdInfo_s* getCMD(char *clBuff, char **nextWord, cmdHist_s *cmdHist, bool *exitFlag)
+{
+    bool endOfInput = false;
+    size_t wordLen = 0;
+    cmdInfo_s *toExecute = NULL;
+
+    // check for exit command
+    if(strcmp(*nextWord, "exit") == 0){
+        *exitFlag = EXIT;
+        return NULL;
+    }
+    
+    // any trailing & and '\n' are removed. Set up cmd and place in history
+    toExecute = init_cmdInfo_s();
+    
+    wordLen = strlen(*nextWord) + 1;
+    toExecute -> cmdName = (char*)malloc(sizeof(char)*wordLen);
+    if(toExecute -> cmdName == NULL) errExit("getCMD: malloc failure, cmdName");
+
+    strcpy(toExecute -> cmdName, *nextWord);
+
+    // set runBackground if the command line input ended in &
+    toExecute -> runBackground = cmdHist -> history[0] -> runBackground;
+
+    while(endOfInput != NL_FOUND){
+        // check following character
+        if(*nextWord != NULL){
+            free(*nextWord); // clean up for next value
+            *nextWord = NULL;
+        }
+        *nextWord = parseInput(clBuff, OLD_BUFF);
+
+        // next values must be arguments
+        if(**nextWord != '\n' && **nextWord != '>' && **nextWord != '<' && **nextWord != '|'){ 
+            toExecute -> args = aquireArgs(toExecute -> cmdName, nextWord, 
+                                           clBuff, &endOfInput);
+        }
+        
+        switch(**nextWord){
+            case '>': // change output to file given
+                if(*nextWord != NULL){
+                    free(*nextWord);
+                    *nextWord = NULL;
+                }
+                *nextWord = parseInput(clBuff, OLD_BUFF);
+                NL_CHECK(*nextWord, wordLen, endOfInput);
+                ++wordLen;
+                toExecute -> output = (char*)malloc(sizeof(char)*wordLen);
+                if(toExecute -> output == NULL) 
+                    errExit("exec_shell, toExecute -> output malloc failure");
+                
+                strncpy(toExecute -> output, *nextWord, wordLen);
+                break;
+            case '<':  // change input to file given
+                if(*nextWord != NULL){
+                    free(*nextWord);
+                    *nextWord = NULL;
+                }
+                *nextWord = parseInput(clBuff, OLD_BUFF);
+                NL_CHECK(*nextWord, wordLen, endOfInput);
+                ++wordLen;
+                toExecute -> input = (char*)malloc(sizeof(char)*wordLen);
+                if(toExecute -> input == NULL) 
+                    errExit("exec_shell, toExecute -> output malloc failure");
+                
+                strncpy(toExecute -> input, *nextWord, wordLen);
+                break;
+            case '|':  // set input of cmd2 from output cmd1. cmd1|cmd2
+                /* set end of input, since the input for this particular
+                 * command is found 
+                 */
+                endOfInput = true;
+
+                
+                break;
+        }
+
+        NL_CHECK(*nextWord, wordLen, endOfInput);
+    } // end while(eoi != NL_FOUND)
+
+    return toExecute;
+}//end getCMD 
+
 
 static void handleExec(cmdInfo_s *toExec)
 {
     int32_t fd;
     char **noArgs = (char*[]){toExec -> cmdName, NULL};
    
-    printf("%s", toExec -> cmdName);
     if(toExec -> runBackground == NO_BACKGROUND){
         if(toExec -> input != NULL){
            if((fd = open(toExec -> input, O_WRONLY)) == FAILURE)
                err_exit("failed to open input src");
         
-            if(dup2(fd, STDIN_FILENO) == -1) errMsg("dup2 failure");
+            if(dup2(fd, STDIN_FILENO) == FAILURE) errMsg("dup2 failure");
             if(close(fd) == FAILURE) err_exit("output fd close failure");
         }
 
@@ -376,16 +441,16 @@ static void handleExec(cmdInfo_s *toExec)
            if((fd = open(toExec -> output, O_WRONLY | O_CREAT, S_IRWXU)) == FAILURE)
                err_exit("failed to open input src");
 
-            if(dup2(fd, STDOUT_FILENO) == -1) errMsg("dup2 failure");
+            if(dup2(fd, STDOUT_FILENO) == FAILURE) errMsg("dup2 failure");
             if(close(fd) == FAILURE) err_exit("output fd close failure");
         }
         
         if(toExec -> args != NULL){
-            execv(toExec -> cmdName, toExec -> args);
+            execvp(toExec -> cmdName, toExec -> args);
             err_exit("command not found");
         }
         else{
-            execv(toExec -> cmdName, noArgs);
+            execvp(toExec -> cmdName, noArgs);
             err_exit("command not found");
         }
     }
@@ -441,7 +506,7 @@ void exec_shell(char *envp[])
         
         NL_CHECK(nextWord, wordLen, endOfInput);
 
-        toExecute = getCMD(nextWord, &exitFlag, wordLen);
+        toExecute = getCMD(clBuff, &nextWord, cmdHist, &exitFlag);
         if(exitFlag == EXIT){
             if(nextWord != NULL){
                 free(nextWord);
@@ -450,57 +515,6 @@ void exec_shell(char *envp[])
             free_cmdHist_s(&cmdHist);
             return; // exit the shell program
         }
-        // set runBackground if the command line input ended in &
-        toExecute -> runBackground = cmdHist -> history[0] -> runBackground;
-
-        while(endOfInput != NL_FOUND){
-            // check following character
-            if(nextWord != NULL){
-                free(nextWord); // clean up for next value
-                nextWord = NULL;
-            }
-            nextWord = parseInput(clBuff, OLD_BUFF);
-            wordLen = strlen(nextWord);
-
-            // next values must be arguments
-            if(*nextWord != '>' && *nextWord != '<' && *nextWord != '|'){ 
-                toExecute -> args = aquireArgs(toExecute -> cmdName, &nextWord, 
-                                               clBuff, &endOfInput);
-            }
-            
-            switch(*nextWord){
-                case '>': // change output to file given
-                    if(nextWord != NULL){
-                        free(nextWord);
-                        nextWord = NULL;
-                    }
-                    nextWord = parseInput(clBuff, OLD_BUFF);
-                    NL_CHECK(nextWord, wordLen, endOfInput);
-                    ++wordLen;
-                    toExecute -> output = (char*)malloc(sizeof(char)*wordLen);
-                    if(toExecute -> output == NULL) 
-                        errExit("exec_shell, toExecute -> output malloc failure");
-                    
-                    strncpy(toExecute -> output, nextWord, wordLen);
-                    break;
-                case '<':  // change input to file given
-                    if(nextWord != NULL){
-                        free(nextWord);
-                        nextWord = NULL;
-                    }
-                    nextWord = parseInput(clBuff, OLD_BUFF);
-                    NL_CHECK(nextWord, wordLen, endOfInput);
-                    ++wordLen;
-                    toExecute -> input = (char*)malloc(sizeof(char)*wordLen);
-                    if(toExecute -> input == NULL) 
-                        errExit("exec_shell, toExecute -> output malloc failure");
-                    
-                    strncpy(toExecute -> input, nextWord, wordLen);
-                    break;
-                case '|':  // set input of cmd2 from output cmd1. cmd1|cmd2
-                    break;
-            }
-        } // end while(eoi != NL_FOUND)
 
         switch(pid = fork()){
             case -1: errExit("exec_shell: error forking a child"); break;
@@ -519,13 +533,6 @@ void exec_shell(char *envp[])
         }
         
         free_cmdInfo_s(&toExecute);
-    /*
-            read_command(command, parameters);
-            if(fork() != 0)
-                wait(&status);
-            else
-                execvp(command, parameters);  use any version of exec */
-            
     }//end while
 #undef PROMPT_LEN
 }//end exec_shell
