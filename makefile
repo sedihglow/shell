@@ -2,11 +2,14 @@ CC = gcc
 CPPFLAGS = -c -Wall -Wextra -pthread -m64 -O0 -g -pedantic -std=c99 
 LDFLAGS = -pthread -m64
 
-shell.out:				main.o shell.o err_handle.o convNum.o
-						$(CC) $(LDFLAGS) main.o shell.o err_handle.o convNum.o -o shell.out
+shell.out:				main.o shell.o err_handle.o convNum.o history.o cmdInput.o pipeShell.o handleExec.o
+						$(CC) $(LDFLAGS) main.o shell.o err_handle.o cmdInput.o history.o convNum.o pipeShell.o handleExec.o -o shell.out
 
 main.o:					main.c ./utility_sys.h
 						$(CC) $(CPPFLAGS) main.c
+
+shell.o:				shell.c ./utility_sys.h
+						$(CC) $(CPPFLAGS) shell.c
 
 err_handle.o:			./err_handle/err_handle.c ./utility_sys.h
 						$(CC) $(CPPFLAGS) ./err_handle/err_handle.c
@@ -14,9 +17,17 @@ err_handle.o:			./err_handle/err_handle.c ./utility_sys.h
 convNum.o:				./convNum/convNum.c ./utility_sys.h
 						$(CC) $(CPPFLAGS) ./convNum/convNum.c
 
-shell.o:				shell.c ./utility_sys.h
-						$(CC) $(CPPFLAGS) shell.c
+history.o:				history.c ./utility_sys.h
+						$(CC) $(CPPFLAGS) history.c
 
+cmdInput.o:				cmdInput.c ./utility_sys.h
+						$(CC) $(CPPFLAGS) cmdInput.c
+
+pipeShell.o:			pipeShell.c ./utility_sys.h
+						$(CC) $(CPPFLAGS) pipeShell.c
+
+handleExec.o:			handleExec.c ./utility_sys.h
+						$(CC) $(CPPFLAGS) handleExec.c
 
 .PHONY: check
 check:					# check for memory leak
