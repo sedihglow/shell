@@ -73,15 +73,23 @@ char* parseInput(char *inBuff, int32_t *bfPl, int32_t mode)
 
     // fills parseStr with the characters up to the next ' ' or '\n', has '\0'
     READ_PARSE(STDIN_FILENO, inBuff, *bfPl, BUFF_SIZE-2, retIO, parseStr,
-               BUFF_SIZE, inBuff[*bfPl] != ' ' && inBuff[*bfPl] != '\n');
+               BUFF_SIZE, 
+               inBuff[*bfPl] != ' ' && inBuff[*bfPl] != '\n' &&
+               inBuff[*bfPl] != '<' && inBuff[*bfPl] != '>' &&
+               inBuff[*bfPl] != '|');
     
     // build final string
     len = strlen(parseStr);
 
     if(inBuff[*bfPl] == '\n') parseStr[len] = '\n'; // keep the \n for ref
-    else{
+    else if(inBuff[*bfPl] == ' '){
         while(inBuff[*bfPl] == ' ')
             ++(*bfPl); // skip over the ' ' for next parse
+        
+    }
+    else if(parseStr[0] == '\0'){
+        parseStr[0] = inBuff[*bfPl];
+        ++(*bfPl);
     }
 
     len += 2; // place room for '\n' and '\0'
@@ -134,8 +142,6 @@ char** aquireArgs(char *progName, char **nextWord, char *inBuff, int32_t *bfPl, 
         }
         *nextWord = parseInput(inBuff, bfPl, OLD_BUFF);
         if(NULL == *nextWord) errExit("aquireArgs, nextWord malloc failure");
-
-        //NL_CHECK(*nextWord, len, *endOfInput);
 
        ++i; // go to next index
     }while(*endOfInput != NL_FOUND && **nextWord != '<' && **nextWord != '>'
