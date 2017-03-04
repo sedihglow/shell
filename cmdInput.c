@@ -135,7 +135,7 @@ char** aquireArgs(char *progName, char **nextWord, char *inBuff, int32_t *bfPl, 
         *nextWord = parseInput(inBuff, bfPl, OLD_BUFF);
         if(NULL == *nextWord) errExit("aquireArgs, nextWord malloc failure");
 
-        NL_CHECK(*nextWord, len, *endOfInput);
+        //NL_CHECK(*nextWord, len, *endOfInput);
 
        ++i; // go to next index
     }while(*endOfInput != NL_FOUND && **nextWord != '<' && **nextWord != '>'
@@ -157,7 +157,7 @@ char** aquireArgs(char *progName, char **nextWord, char *inBuff, int32_t *bfPl, 
 }
 
 // does not account for things ilke !n | !n etc.
-cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag)
+cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag, int32_t buffState)
 {
     char *nextWord = NULL;
     bool endOfInput = false;
@@ -165,7 +165,7 @@ cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag)
     cmdInfo_s *toExecute = NULL;
 
     // parse the word in the command
-    nextWord = parseInput(clBuff, bfPl, OLD_BUFF);
+    nextWord = parseInput(clBuff, bfPl, buffState);
     if(NULL == nextWord) errExit("parseInput, nextWord malloc failure");
     
     NL_CHECK(nextWord, wordLen, endOfInput);
@@ -174,10 +174,12 @@ cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag)
     if(exitFlag != NULL){
         if(strcmp(nextWord, "exit") == 0){
             *exitFlag = EXIT;
+            free(nextWord);
             return NULL;
         }
         else if(strcmp(nextWord, "history") == 0){
             *exitFlag = PRINT_HIST;
+            free(nextWord);
             return NULL;
         }
     }

@@ -8,6 +8,8 @@
 
 #include "shell.h"
 
+#define HIST_STRLEN 7
+
 char *_currentCmd = NULL;
 
 /********************** HEADER FUNCTIONS *************************************/
@@ -18,17 +20,17 @@ void exec_shell(char *envp[])
     cmdInfo_s *toExecute = NULL;     // temp fill of a command
     pid_t pid = 0;
     ssize_t retIO = 0;               // return values from IO
-    int exitFlag = 0;
+    int32_t exitFlag = 0;            // gets set with EXIT and PRINT_HIST
     int32_t bfPl = 0;
     char clBuff[BUFF_SIZE];          // command line buffer
-
 
     // Initialize history. all history feilds are NULL untill allocated
     cmdHist = init_cmdHist_s((size_t)HIST_SIZE);
 
     // loop until exit command is sent
     while(true){ 
-        bfPl = 0;
+        exitFlag = 0; // reset the flag to exit or print history and repeat
+
         // display prompt for user
         retIO = write(STDOUT_FILENO, "[shell] $ ", PROMPT_LEN);
         if(FAILURE == retIO) 
@@ -41,7 +43,8 @@ void exec_shell(char *envp[])
         if(clBuff[0] == '\n') continue; // no input, go back and wait
 
         if(clBuff[0] != '!'){ // fill next history slot
-            addHistory(clBuff, cmdHist);
+            if(strncmp("history", clBuff, HIST_STRLEN) != 0)
+                addHistory(clBuff, cmdHist);
         }
         else{// takes the !x input and sets clBuff to the previous cmd
             if(callHistory(clBuff, cmdHist) == FAILURE){
@@ -49,7 +52,7 @@ void exec_shell(char *envp[])
             }
         }
 
-        toExecute = getCMD(clBuff, &bfPl, &exitFlag);
+        toExecute = getCMD(clBuff, &bfPl, &exitFlag, NEW_BUFF);
         if(exitFlag == EXIT){
             free_cmdHist_s(&cmdHist);
             return; // exit the shell program

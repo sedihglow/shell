@@ -19,15 +19,15 @@ static void sigChld_handler(int sig){
 void handleExec(cmdInfo_s *toExec)
 {
     char **noArgs = (char*[]){toExec -> cmdName, NULL};
-    int32_t fd;
+    int32_t fd = 0;
     pid_t chPid;
     struct sigaction sigact;
 
     if(toExec -> runBackground == NO_BACKGROUND){
         if(toExec -> input != NULL){
-           if((fd = open(toExec -> input, O_WRONLY)) == FAILURE)
+           if((fd = open(toExec -> input, O_RDONLY)) == FAILURE)
                err_exit("failed to open input src");
-        
+
             if(dup2(fd, STDIN_FILENO) == FAILURE) errMsg("dup2 failure");
             if(close(fd) == FAILURE) err_exit("output fd close failure");
         }

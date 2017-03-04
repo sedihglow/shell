@@ -13,13 +13,14 @@
 
 #define BUFF_SIZE 256 // size of input buffer
 
-#define NEW_BUFF 1    // identifies if the buffer passed into parseInput is new
-#define OLD_BUFF 0    // identifies if the buffer is the same as previous.
+#define NEW_BUFF   1 // identifies if the buffer passed into parseInput is new
+#define OLD_BUFF   0 // identifies if the buffer is the same as previous.
 #define FIRST_BUFF 0 // shows its the first buffer sent to parseInput
 
-#define EXIT 0x1
+#define EXIT       0x1
 #define PRINT_HIST 0x2
-#define NL_FOUND 1
+#define CD         0x3
+#define NL_FOUND   0x1
 
 #define SET_BACKGROUND 1 // sets the cmd to run in background
 #define NO_BACKGROUND  0 // sets the cmd to not run in background (default)
@@ -56,9 +57,8 @@ char* parseInput(char *inBuff, int32_t *bfPl, int32_t mode);
 char** aquireArgs(char *progName, char **nextWord, char *inBuff, int32_t *bfPl, bool *endOfInput);
 
 // fills a cmdInfo_s struct, adjusts cmdHist for background proccess as well.
-// TODO: find somewhere else that is less intrusive for cmdHist alteration, its
-//       just one line
-cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag);
+// buff state is what the inital call to parseInput will use for the mode
+cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag, int32_t buffState);
 
 /*********** EOF **********/
 #endif
