@@ -8,6 +8,8 @@
 
 #include "cmdInput.h"
 
+#define MATCH 0
+
 
 cmdInfo_s* init_cmdInfo_s(void)
 {
@@ -72,24 +74,27 @@ char* parseInput(char *inBuff, int32_t *bfPl, int32_t mode)
     if(NEW_BUFF == mode) *bfPl = 0;
 
     // fills parseStr with the characters up to the next ' ' or '\n', has '\0'
-    READ_PARSE(STDIN_FILENO, inBuff, *bfPl, BUFF_SIZE-2, retIO, parseStr,
+    CL_READ_PARSE(STDIN_FILENO, inBuff, *bfPl, BUFF_SIZE-2, retIO, parseStr,
                BUFF_SIZE, 
                inBuff[*bfPl] != ' ' && inBuff[*bfPl] != '\n' &&
                inBuff[*bfPl] != '<' && inBuff[*bfPl] != '>' &&
-               inBuff[*bfPl] != '|');
+               inBuff[*bfPl] != '|' && inBuff[*bfPl] != '\t');
     
     // build final string
     len = strlen(parseStr);
 
     if(inBuff[*bfPl] == '\n') parseStr[len] = '\n'; // keep the \n for ref
-    else if(inBuff[*bfPl] == ' '){
-        while(inBuff[*bfPl] == ' ')
-            ++(*bfPl); // skip over the ' ' for next parse
-        
+    else if(inBuff[*bfPl] == ' ' || inBuff[*bfPl] == '\t'){
+        do{
+            ++(*bfPl); // skip over ' ' and '\t' for next parse
+        }while(inBuff[*bfPl] == ' ' || inBuff[*bfPl] == '\t');
     }
     else if(parseStr[0] == '\0'){
-        parseStr[0] = inBuff[*bfPl];
-        ++(*bfPl);
+        if(inBuff[*bfPl] != ' ' && inBuff[*bfPl] != '\t')
+            parseStr[0] = inBuff[*bfPl];
+        do{
+            ++(*bfPl); // skip over ' ' and '\t' for next parse
+        }while(inBuff[*bfPl] == ' ' || inBuff[*bfPl] == '\t');
     }
 
     len += 2; // place room for '\n' and '\0'
@@ -163,7 +168,7 @@ char** aquireArgs(char *progName, char **nextWord, char *inBuff, int32_t *bfPl, 
 }
 
 // does not account for things ilke !n | !n etc.
-cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag, int32_t buffState)
+cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *shellCmd, int32_t buffState)
 {
     char *nextWord = NULL;
     bool endOfInput = false;
@@ -176,15 +181,30 @@ cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag, int32_t buffSt
     
     NL_CHECK(nextWord, wordLen, endOfInput);
 
-    // check for exit command
-    if(exitFlag != NULL){
-        if(strcmp(nextWord, "exit") == 0){
-            *exitFlag = EXIT;
+    // check for shell command
+    if(shellCmd != NULL){
+        if(strcmp(nextWord, "exit") == MATCH){
+            *shellCmd = EXIT;
             free(nextWord);
             return NULL;
         }
-        else if(strcmp(nextWord, "history") == 0){
-            *exitFlag = PRINT_HIST;
+        else if(strcmp(nextWord, "history") == MATCH){
+            *shellCmd = PRINT_HIST;
+            free(nextWord);
+            return NULL;
+        }
+        else if(strcmp(nextWord, "cd") == MATCH){
+            *shellCmd = CD;
+            free(nextWord);
+            return NULL;
+        }
+        else if(strcmp(nextWord, "!!") == MATCH){
+            *shellCmd = BANG_BANG;
+            free(nextWord);
+            return NULL;
+        }
+        else if(strcmp(nextWord, "pwd") == MATCH){
+            *shellCmd = PWD;
             free(nextWord);
             return NULL;
         }
@@ -197,7 +217,7 @@ cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag, int32_t buffSt
     toExecute -> cmdName = (char*)malloc(sizeof(char)*wordLen);
     if(toExecute -> cmdName == NULL) errExit("getCMD: malloc failure, cmdName");
 
-    strcpy(toExecute -> cmdName, nextWord);
+    strncpy(toExecute -> cmdName, nextWord, wordLen);
 
     while(endOfInput != NL_FOUND){
         // check following character

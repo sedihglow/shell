@@ -68,7 +68,7 @@
  * - conditional == The conditionals desired in the copy process.
  *                Example: inBuf[i] != ' ' && inBuf[i] != '\n' 
  */
-#define READ_PARSE(fd, inBuf, bfPl, nByte, retBytes, resStr, resLen, conditional)\
+#define CL_READ_PARSE(fd, inBuf, bfPl, nByte, retBytes, resStr, resLen, conditional)\
 {                                                                              \
     int _TM_ = 0;                                                              \
     assert(resStr != NULL && inBuf != NULL);                                   \
@@ -77,11 +77,6 @@
     {                                                                          \
         resStr[_TM_] = inBuf[bfPl];                                            \
         ++bfPl;                  /* increase buff placement */                 \
-        if('\0' == inBuf[(bfPl)]){   /* reached end of current buffer */       \
-            READ_INPUT(fd, inBuf, nByte, retBytes);                            \
-            inBuff[retBytes] = '\0';                                           \
-            bfPl = 0;                                                          \
-        }                                                                      \
     } /* end for */                                                            \
 } // end READ_NEXT_FILE
 

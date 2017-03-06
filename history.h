@@ -22,6 +22,8 @@ typedef struct comLineInput{
 
 typedef struct cmdHist{
     clInput_s **history;
+    char *lastBang;
+    int32_t bangHistNum;
     int32_t recent; 
     int32_t oldest;
 }cmdHist_s;

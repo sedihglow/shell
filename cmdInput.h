@@ -20,6 +20,9 @@
 #define EXIT       0x1
 #define PRINT_HIST 0x2
 #define CD         0x3
+#define BANG_BANG  0x4
+#define PWD        0x5
+
 #define NL_FOUND   0x1
 
 #define SET_BACKGROUND 1 // sets the cmd to run in background
@@ -58,7 +61,7 @@ char** aquireArgs(char *progName, char **nextWord, char *inBuff, int32_t *bfPl, 
 
 // fills a cmdInfo_s struct, adjusts cmdHist for background proccess as well.
 // buff state is what the inital call to parseInput will use for the mode
-cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *exitFlag, int32_t buffState);
+cmdInfo_s* getCMD(char *clBuff, int32_t *bfPl, int32_t *shellCmd, int32_t buffState);
 
 /*********** EOF **********/
 #endif

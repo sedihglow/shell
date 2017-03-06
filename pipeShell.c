@@ -35,6 +35,7 @@ static void executePipe(cmdInfo_s *cmd1, cmdInfo_s *cmd2, char *inBuff, int32_t 
             }
             else{
                 cmd3 = getCMD(inBuff, bfPl, (int32_t*)NULL, OLD_BUFF);
+                cmd3 -> runBackground = cmd1 -> runBackground;
                 executePipe(cmd2, cmd3, inBuff, bfPl);
                 free_cmdInfo_s(&cmd1);
                 free_cmdInfo_s(&cmd2); 
@@ -52,6 +53,7 @@ void handlePipe(cmdInfo_s *toExecute, char *inBuff, int32_t *bfPl)
     
         // get next command that toExecute will get piped into
         nextCmd = getCMD(inBuff, bfPl, (int32_t*)NULL, OLD_BUFF);
+        nextCmd -> runBackground = toExecute -> runBackground;
         switch(chPid = fork()){
             case -1: err_exit("handlePipe: fork() failure"); break;
             case  0: //child

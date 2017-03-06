@@ -8,6 +8,8 @@
 
 #include "history.h"
 
+#define MATCH 0
+
 // returns an initialized cmdHist_s*.
 cmdHist_s* init_cmdHist_s(size_t histSize)
 {
@@ -19,8 +21,12 @@ cmdHist_s* init_cmdHist_s(size_t histSize)
     for(i = 0; i < HIST_SIZE; ++i)
         toInit -> history[i] = NULL;
 
+    toInit -> lastBang = NULL;
+    toInit -> bangHistNum = 0;
+
     toInit -> recent = 0;
     toInit -> oldest = 0;
+
     return toInit;
 }// end init_cmdHist_s
 
@@ -42,6 +48,12 @@ void free_cmdHist_s(cmdHist_s **toFree)
         free((*toFree) -> history);
         (*toFree) -> history = NULL;
     }
+
+    if((*toFree) -> lastBang != NULL){
+        free((*toFree) -> lastBang);
+        (*toFree) -> lastBang = NULL;
+    }
+
     free(*toFree);
     *toFree = NULL;
 }// end free_cmdHist_s
@@ -65,7 +77,12 @@ int32_t callHistory(char *inBuff, cmdHist_s *cmdHist)
         setBackground = SET_BACKGROUND;
     }
     
-    if(inBuff[len-1] == '\n') inBuff[len-1] = '\0';
+    if(inBuff[len-1] == '\n') inBuff[--len] = '\0';
+
+    // compare to see if command is !!, if so, return.
+    if(strncmp(inBuff, "!!", len) == MATCH){
+        return SUCCESS;
+    }
 
     histNum = conv32_t(inBuff+1, GN_BASE_10 | GN_GT_O | GN_NOEXIT_, "inBuff");
     // TODO: set errno in conversion function so i can error check the
@@ -90,7 +107,18 @@ int32_t callHistory(char *inBuff, cmdHist_s *cmdHist)
         return FAILURE;
     }
 
-    // set inBuff as the previous command
+    // save this ! command in lastBang for !!
+    if(cmdHist -> lastBang == NULL){ // allocate if NULL
+        ++len; // place room for '\0' in lastBang
+        cmdHist -> lastBang = (char*)malloc(sizeof(char)*len);
+        if(cmdHist -> lastBang == NULL)
+            errExit("callHistory: saving last bang command malloc failure");
+    }
+    strncpy(cmdHist -> lastBang, inBuff, len);
+    cmdHist -> bangHistNum = histNum;
+
+    // set inBuff as the previous command, cmdInput will always be less than
+    // the size of inBuff
     strcpy(inBuff, cmdHist -> history[histNum] -> cmdInput);
 
     // set background value in case it changed from history
