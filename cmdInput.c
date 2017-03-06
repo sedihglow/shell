@@ -78,7 +78,8 @@ char* parseInput(char *inBuff, int32_t *bfPl, int32_t mode)
                BUFF_SIZE, 
                inBuff[*bfPl] != ' ' && inBuff[*bfPl] != '\n' &&
                inBuff[*bfPl] != '<' && inBuff[*bfPl] != '>' &&
-               inBuff[*bfPl] != '|' && inBuff[*bfPl] != '\t');
+               inBuff[*bfPl] != '|' && inBuff[*bfPl] != '\t' &&
+               inBuff[*bfPl] != '\0');
     
     // build final string
     len = strlen(parseStr);

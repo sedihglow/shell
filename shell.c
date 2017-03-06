@@ -71,9 +71,9 @@ void exec_shell(char *envp[])
                     errMsg("Invalid path name.");
                 continue;
             case BANG_BANG:
-                len = strlen(clBuff);        
-                memset(clBuff, '\0', len);
                 if(cmdHist != NULL || cmdHist -> lastBang != NULL){
+                    len = strlen(clBuff);        
+                    memset(clBuff, '\0', len);
                     strcpy(clBuff, cmdHist -> lastBang);
                     callHistory(clBuff, cmdHist);
                     shellCmd = 0;
